@@ -1,78 +1,79 @@
-﻿# AGENTS.md — prospera-api-gateway
-# AI Agent Operating Contract | Infrastructure — 統一入口
-# Version: 1.0 | 2026-04-26
+# AGENTS.md — prospera-api-gateway
+# AI Agent Operating Contract | L2 — Infrastructure
+# Version: 1.0 | 2026-04-30
+# Governance Reference: Prospera-Governance-Core v3.0
+# Pipeline Reference: Prospera-Workflow-Engine v1.0
+# Codex Reference: prospera-engineering-codex v2.0
 
 ## 1. REPO IDENTITY
-
 Repo: ccktaiwan/prospera-api-gateway
-Layer: 基礎設施層（橫跨所有層）
-Role: 生態系唯一 API 入口，所有產品的統一調用點
-成熟度: 開發中，最高優先
-核心原則: 沒有 Gateway，所有產品都是孤島
-Governance Reference: Prospera-Governance-Core v1.0
-Codex Reference: prospera-engineering-codex v1.0
+Layer: L2 — Infrastructure（統一 API 入口）
+Role: 所有外部呼叫的唯一入口，不可繞過
+Priority: P0 — 最高基礎設施優先級
+Palantir Equivalent: AIP API Layer
 
-## 2. 不污染原則（強制）
+## 2. 生態系定位
+此 Repo 是 Prospera 生態系的統一入口：
+外部請求 → API Gateway → Decision Engine → Agent → 結果
 
-應用層（L5）-> API Gateway -> 引擎層（L3/L4）-> OS（L1）
+所有產品（Exam Platform / Brand OS / Mobile OS）必須透過此 Repo 呼叫 OS Agent
+不允許任何產品直接呼叫 Agent，必須經過此 Gateway
 
-任何跳過 Gateway 直接存取底層的行為 = 架構違規 = BLOCK
+## 3. Pipeline-Thread-Container 角色
+Pipeline：此 Repo 是所有外部請求進入 Layer 1 INTENT 的唯一通道
+Thread：每個 API 請求是一個獨立 Thread，有完整生命週期
+Container：每個客戶（鳳凰吉祥/欣轅TOTO）是獨立 Container，互相隔離
 
-## 3. 核心職責
+## 4. AGENT RULES
 
-| 職責 | 說明 |
-|------|------|
-| 統一入口 | 所有外部呼叫只能透過 Gateway |
-| 流量治理 | Rate limiting / 請求驗證 / 路由分發 |
-| 身份驗證橋接 | 與 prospera-identity-authority 聯動，驗證 GID 身份鏈 |
-| 稽核日誌 | 所有請求寫入 prospera-audit-ledger |
-| 服務發現 | 依照 prospera-registry 找到正確的 Engine 或 Agent |
+### PERMIT — 允許自動執行
+- 接收外部 API 請求（x-api-key 驗證通過後）
+- 路由請求到對應 Agent（content/strategy/analytics）
+- 執行 Decision Engine 四問法評估
+- 記錄所有請求到稽核日誌
+- 回傳 Agent 執行結果
+- 執行限流和錯誤處理
+- 讀取 Brand KB（根據 tenant_id）
 
-## 4. MVP 功能定義
-
-| 功能 | 要求 |
-|------|------|
-| 路由分發 | 能路由到 content / strategy / analytics Agent |
-| API Key 驗證 | x-api-key header 驗證（與 MCP Server 對齊） |
-| 稽核日誌 | 所有請求自動寫入 mcp_audit_log.jsonl |
-| 錯誤處理 | 標準化格式（4xx / 5xx），含 Governance 錯誤碼 |
-| 健康檢查 | GET /health — 確認 Gateway 和下游 Agent 狀態 |
-
-## 5. AGENT RULES
-
-### PERMIT — 允許執行
-- 新增路由規則（對應新的 Agent 或 Engine）
-- 修改 Rate Limiting 參數
-- 新增請求驗證邏輯
-
-### ESCALATE — 執行前必須確認
-- 修改 API Key 驗證機制（涉及 Identity Authority）
-- 修改稽核日誌結構（涉及 audit-ledger 的讀取格式）
+### ESCALATE — 執行前必須確認（J點）
+- 新增 API 路由 → J2（影響所有產品）
+- 修改認證機制 → J3（安全影響）
+- 新增客戶 tenant → J1（確認 Brand KB 存在）
+- API 錯誤率超過 5% → J1（技術確認）
 
 ### BLOCK — 禁止執行
-- 允許任何應用層繞過 Gateway 呼叫底層
-- 在沒有 GID 身份鏈驗證的情況下放行請求
-- 自行修改 prospera-registry 的服務發現邏輯
+- 在沒有 x-api-key 的情況下處理請求
+- 繞過 Decision Engine 直接呼叫 Agent
+- 在 Brand KB 不存在的情況下處理品牌請求
+- 自行修改路由規則不通過 PR
+- 記錄客戶請求內容到非稽核系統
 
-## 6. J 點確認
+## 5. Decision Engine 四問法
+Q1 Should → 請求類型在 PERMIT 清單內？
+Q2 Can    → 目標 Agent 和 Brand KB 可用？
+Q3 Fit    → tenant_id 對應的 Brand KB 存在且有效？
+Q4 Profit → 請求有明確的商業目標定義？
 
-J1 架構確認：新增路由或修改驗證機制前暫停，等待人確認
-J2 PR Review：MVP 功能完成後建立 PR，暫停
-J3 部署確認：CI/CD 通過後確認下游整合測試完成，暫停
+## 6. Agent Orchestration 路由規則
+/execute + workflow=content → ContentAgent
+/execute + workflow=strategy → StrategyAgent
+/execute + workflow=analytics → AnalyticsAgent
 
-## 7. 整合順序
+執行順序（跨 Agent 任務）：
+StrategyAgent → ContentAgent → AnalyticsAgent → 回寫 SSOT
 
-Step 1: 包裝 prospera-os MCP Server 路由，讓外部統一呼叫
-Step 2: 整合 prospera-identity-authority，GID 身份鏈驗證
-Step 3: 接上 prospera-exam-platform，第一個受治理的應用
-Step 4: 整合 prospera-audit-ledger，所有請求全程可追溯
+## 7. 現有客戶 Container
+鳳凰吉祥（LPHM）：tenant_id = lphm，Brand KB 已建立
+欣轅TOTO：tenant_id = xinyuan，Brand KB 建立中
 
-Gateway 完成後，Prospera OS 才從「存在」升級到「可被使用」。
+## 8. J 點確認
+J1 技術確認：API 健康狀態、tenant Brand KB 存在性
+J2 品質審閱：新路由的影響範圍評估
+J3 架構決策：認證機制修改、安全邊界調整
 
-# AI-GENERATED DOCUMENT
-# Generated: 2026-04-26T00:00:00Z
-# Model: claude-sonnet-4-6
-# Phase: infra
-# Repo: prospera-api-gateway
-# Governance: prospera-engineering-codex v1.0
-# Human-Reviewed: no
+## 9. 稽核要求
+Commit 格式：gateway(scope): [change] - reason: [why] - phase: [N]
+所有請求記錄：mcp_audit_log.jsonl（append-only）
+
+# Version: 1.0 | 2026-04-30
+# Human-Reviewed: yes
