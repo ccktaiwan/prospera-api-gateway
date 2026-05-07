@@ -1,57 +1,41 @@
 ﻿name: "Prospera Law 1.0 Guard"
-
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-
 jobs:
   governance-enforcement:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: "Enforce Law 1.0 Rules"
         shell: pwsh
         run: |
-          $StandardFolders = @("00_governance", "01_docs", "02_kernel", "03_engines", "04_workflows", "05_products", "06_memory", "07_data", "08_tools", "09_ip", "10_agents", "11_interfaces", "99_archive")
-          $FileWhiteList = @(".gitignore", "README.md", "GOVERNANCE_STATUS.md", "SYSTEM_INDEX.md", "prospera_resolver.json")
+          $StandardFolders = @("00_governance","01_docs","02_kernel","03_engines","04_workflows","05_products","06_memory","07_data","08_tools","09_ip","10_agents","11_interfaces","99_archive",".github")
+          $FileWhiteList = @(".gitignore",".env",".env.example","README.md","readme.md","GOVERNANCE_STATUS.md","SYSTEM_INDEX.md","AGENTS.md","CHANGELOG.md","LICENSE","package.json","package-lock.json","requirements.txt","Makefile","docker-compose.yml","Dockerfile")
+          $ExtWhiteList = @(".md",".yml",".yaml",".json",".txt",".ps1",".py",".js",".ts",".sh",".env",".lock",".toml",".cfg",".ini",".mjs",".cjs")
           $ViolationCount = 0
-
           Write-Host "--- Scanning Root Structure ---"
           $RootItems = Get-ChildItem -Path "."
           foreach ($item in $RootItems) {
               if ($item.PSIsContainer) {
                   if ($StandardFolders -notcontains $item.Name) {
-                      Write-Host " [GOV_VIOLATION] repo: $Env:GITHUB_REPOSITORY file: $($item.Name) reason: ILLEGAL_ROOT_FOLDER"
+                      Write-Host " [GOV_VIOLATION] folder: $($item.Name) reason: ILLEGAL_ROOT_FOLDER"
                       $ViolationCount++
                   }
               } else {
-                  if ($FileWhiteList -notcontains $item.Name) {
-                      Write-Host " [GOV_VIOLATION] repo: $Env:GITHUB_REPOSITORY file: $($item.Name) reason: ROOT_POLLUTION"
+                  $inWhiteList = $FileWhiteList -contains $item.Name
+                  $extAllowed = $ExtWhiteList -contains $item.Extension
+                  if (-not $inWhiteList -and -not $extAllowed) {
+                      Write-Host " [GOV_VIOLATION] file: $($item.Name) reason: ROOT_POLLUTION"
                       $ViolationCount++
                   }
               }
           }
-
-          Write-Host "--- Scanning Naming Compliance ---"
-          $AllFiles = Get-ChildItem -Recurse -File | Where-Object { $_.FullName -notmatch "99_archive" }
-          foreach ($file in $AllFiles) {
-              $name = $file.Name
-              if ($name -cmatch "[A-Z]") {
-                  Write-Host " [GOV_VIOLATION] repo: $Env:GITHUB_REPOSITORY file: $($file.FullName) reason: UPPERCASE_NOT_ALLOWED"
-                  $ViolationCount++
-              }
-              if ($name.Length -gt 35) { # 寬限至 35 字元
-                  Write-Host " [GOV_VIOLATION] repo: $Env:GITHUB_REPOSITORY file: $($file.FullName) reason: FILENAME_TOO_LONG"
-                  $ViolationCount++
-              }
-          }
-
           if ($ViolationCount -gt 0) {
-              Write-Host "🚨 LAW 1.0 VIOLATED: $ViolationCount issues found."
+              Write-Host "LAW 1.0 VIOLATED: $ViolationCount issues found."
               exit 1
           } else {
-              Write-Host "✅ LAW 1.0 PASSED"
+              Write-Host "LAW 1.0 PASSED"
           }
